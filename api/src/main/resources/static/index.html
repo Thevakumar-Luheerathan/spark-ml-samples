@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Music Genre Classifier</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #0f0f1a;
+      color: #e0e0e0;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 40px 20px;
+    }
+    h1 {
+      font-size: 2rem;
+      font-weight: 700;
+      margin-bottom: 8px;
+      background: linear-gradient(90deg, #a78bfa, #60a5fa);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .subtitle {
+      color: #888;
+      margin-bottom: 32px;
+      font-size: 0.9rem;
+    }
+    .card {
+      background: #1a1a2e;
+      border: 1px solid #2a2a4a;
+      border-radius: 12px;
+      padding: 28px;
+      width: 100%;
+      max-width: 780px;
+      margin-bottom: 24px;
+    }
+    label {
+      display: block;
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: #a0a0c0;
+      margin-bottom: 8px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    textarea {
+      width: 100%;
+      height: 180px;
+      background: #0f0f1a;
+      border: 1px solid #2a2a4a;
+      border-radius: 8px;
+      color: #e0e0e0;
+      font-size: 0.95rem;
+      line-height: 1.6;
+      padding: 14px;
+      resize: vertical;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    textarea:focus { border-color: #6366f1; }
+    button {
+      margin-top: 16px;
+      width: 100%;
+      padding: 14px;
+      background: linear-gradient(90deg, #6366f1, #3b82f6);
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.2s, transform 0.1s;
+    }
+    button:hover:not(:disabled) { opacity: 0.9; transform: translateY(-1px); }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    .spinner {
+      display: none;
+      width: 20px; height: 20px;
+      border: 3px solid rgba(255,255,255,0.3);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      margin: 0 auto;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .result-card { display: none; }
+    .genre-badge {
+      display: inline-block;
+      font-size: 1.6rem;
+      font-weight: 700;
+      padding: 10px 24px;
+      border-radius: 999px;
+      margin-bottom: 24px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+    .chart-container { position: relative; height: 280px; }
+    .error-msg {
+      display: none;
+      background: #2d1a1a;
+      border: 1px solid #7f1d1d;
+      color: #fca5a5;
+      border-radius: 8px;
+      padding: 14px;
+      margin-top: 12px;
+      font-size: 0.9rem;
+    }
+  </style>
+</head>
+<body>
+  <h1>Music Genre Classifier</h1>
+  <p class="subtitle">Paste song lyrics below and let the model predict the genre</p>
+
+  <div class="card">
+    <label for="lyrics">Song Lyrics</label>
+    <textarea id="lyrics" placeholder="Paste lyrics here…"></textarea>
+    <button id="classifyBtn" onclick="classify()">Classify Genre</button>
+    <div class="spinner" id="spinner"></div>
+    <div class="error-msg" id="errorMsg"></div>
+  </div>
+
+  <div class="card result-card" id="resultCard">
+    <label>Predicted Genre</label>
+    <div id="genreBadge" class="genre-badge"></div>
+    <label>Probability Distribution</label>
+    <div class="chart-container">
+      <canvas id="probChart"></canvas>
+    </div>
+  </div>
+
+  <script>
+    const GENRE_COLORS = {
+      'pop':     '#f472b6',
+      'rock':    '#f87171',
+      'country': '#92400e',
+      'blues':   '#60a5fa',
+      'jazz':    '#a78bfa',
+      'reggae':  '#34d399',
+      'hip hop': '#fb923c'
+    };
+    const GENRE_BG = {
+      'pop':     'rgba(244,114,182,0.15)',
+      'rock':    'rgba(248,113,113,0.15)',
+      'country': 'rgba(146,64,14,0.25)',
+      'blues':   'rgba(96,165,250,0.15)',
+      'jazz':    'rgba(167,139,250,0.15)',
+      'reggae':  'rgba(52,211,153,0.15)',
+      'hip hop': 'rgba(251,146,60,0.15)'
+    };
+
+    let chart = null;
+
+    async function classify() {
+      const lyrics = document.getElementById('lyrics').value.trim();
+      if (!lyrics) { showError('Please paste some lyrics first.'); return; }
+
+      setLoading(true);
+      hideError();
+
+      try {
+        const res = await fetch('/lyrics/predict-genre', {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain' },
+          body: lyrics
+        });
+
+        if (!res.ok) {
+          const text = await res.text();
+          throw new Error(text || `Server returned ${res.status}`);
+        }
+
+        const data = await res.json();
+        renderResult(data.genre, data.probabilities);
+      } catch (err) {
+        showError('Error: ' + err.message);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    function renderResult(genre, probabilities) {
+      const resultCard = document.getElementById('resultCard');
+      resultCard.style.display = 'block';
+
+      const badge = document.getElementById('genreBadge');
+      const color = GENRE_COLORS[genre.toLowerCase()] || '#a78bfa';
+      badge.textContent = genre;
+      badge.style.background = GENRE_BG[genre.toLowerCase()] || 'rgba(167,139,250,0.15)';
+      badge.style.color = color;
+      badge.style.border = '2px solid ' + color;
+
+      const labels = Object.keys(probabilities);
+      const values = labels.map(l => +(probabilities[l] * 100).toFixed(2));
+      const colors = labels.map(l => GENRE_COLORS[l.toLowerCase()] || '#a78bfa');
+
+      if (chart) { chart.destroy(); }
+
+      chart = new Chart(document.getElementById('probChart'), {
+        type: 'bar',
+        data: {
+          labels: labels.map(l => l.charAt(0).toUpperCase() + l.slice(1)),
+          datasets: [{
+            label: 'Probability (%)',
+            data: values,
+            backgroundColor: colors.map(c => c + '55'),
+            borderColor: colors,
+            borderWidth: 2,
+            borderRadius: 6
+          }]
+        },
+        options: {
+          indexAxis: 'y',
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              callbacks: { label: ctx => ' ' + ctx.parsed.x.toFixed(2) + '%' }
+            }
+          },
+          scales: {
+            x: {
+              min: 0, max: 100,
+              grid: { color: '#2a2a4a' },
+              ticks: { color: '#888', callback: v => v + '%' }
+            },
+            y: {
+              grid: { display: false },
+              ticks: { color: '#ccc', font: { size: 13 } }
+            }
+          }
+        }
+      });
+
+      resultCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+
+    function setLoading(on) {
+      const btn = document.getElementById('classifyBtn');
+      const spinner = document.getElementById('spinner');
+      btn.disabled = on;
+      btn.style.display = on ? 'none' : 'block';
+      spinner.style.display = on ? 'block' : 'none';
+    }
+
+    function showError(msg) {
+      const el = document.getElementById('errorMsg');
+      el.textContent = msg;
+      el.style.display = 'block';
+    }
+
+    function hideError() {
+      document.getElementById('errorMsg').style.display = 'none';
+    }
+  </script>
+</body>
+</html>
