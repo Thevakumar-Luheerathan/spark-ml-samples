@@ -2,6 +2,7 @@ package com.lohika.morning.ml.api.controller;
 
 import com.lohika.morning.ml.api.service.LyricsService;
 import com.lohika.morning.ml.spark.driver.service.lyrics.GenrePrediction;
+import com.lohika.morning.ml.spark.driver.service.lyrics.MultiClassGenrePrediction;
 import java.util.Map;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
@@ -30,6 +31,20 @@ public class LyricsController {
         GenrePrediction genrePrediction = lyricsService.predictGenre(unknownLyrics);
 
         return new ResponseEntity<>(genrePrediction, HttpStatus.OK);
+    }
+
+    @RequestMapping(value = "/train-genre", method = RequestMethod.GET)
+    ResponseEntity<Map<String, Object>> trainGenreModel() {
+        Map<String, Object> trainStatistics = lyricsService.classifyLyricsFromCsv();
+
+        return new ResponseEntity<>(trainStatistics, HttpStatus.OK);
+    }
+
+    @RequestMapping(value = "/predict-genre", method = RequestMethod.POST)
+    ResponseEntity<MultiClassGenrePrediction> predictGenreMultiClass(@RequestBody String unknownLyrics) {
+        MultiClassGenrePrediction prediction = lyricsService.predictGenreMultiClass(unknownLyrics);
+
+        return new ResponseEntity<>(prediction, HttpStatus.OK);
     }
 
 }

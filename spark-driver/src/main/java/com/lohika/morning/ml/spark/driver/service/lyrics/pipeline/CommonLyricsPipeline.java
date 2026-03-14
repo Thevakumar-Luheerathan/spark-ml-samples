@@ -11,6 +11,7 @@ import java.util.Map;
 import org.apache.spark.ml.PipelineModel;
 import org.apache.spark.ml.linalg.DenseVector;
 import org.apache.spark.ml.tuning.CrossValidatorModel;
+import org.apache.spark.ml.util.MLWritable;
 import org.apache.spark.sql.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -28,6 +29,12 @@ public abstract class CommonLyricsPipeline implements LyricsPipeline {
 
     @Value("${lyrics.model.directory.path}")
     private String lyricsModelDirectoryPath;
+
+    @Value("${genre.training.set.csv.file.path:}")
+    private String genreTrainingSetCsvFilePath;
+
+    @Value("${genre.model.directory.path:}")
+    private String genreModelDirectoryPath;
 
     @Override
     public GenrePrediction predict(final String unknownLyrics) {
@@ -129,6 +136,33 @@ public abstract class CommonLyricsPipeline implements LyricsPipeline {
         this.mlService.saveModel(model, modelOutputDirectory);
     }
 
+    void saveModel(MLWritable model, String modelOutputDirectory) {
+        this.mlService.saveModel(model, modelOutputDirectory);
+    }
+
+    Dataset<Row> readLyricsFromCsv() {
+        Dataset<Row> data = sparkSession.read()
+                .option("header", "true")
+                .option("quote", "\"")
+                .option("escape", "\"")
+                .csv(genreTrainingSetCsvFilePath);
+
+        data = data.select("lyrics", "genre")
+                .filter(data.col("lyrics").isNotNull())
+                .filter(data.col("genre").isNotNull());
+
+        data = data.coalesce(sparkSession.sparkContext().defaultMinPartitions()).cache();
+        long totalSamples = data.count();
+
+        System.out.println("Total genre samples = " + totalSamples);
+
+        return data;
+    }
+
+    protected PipelineModel loadGenrePipelineModel(String modelDirectory) {
+        return this.mlService.loadPipelineModel(modelDirectory);
+    }
+
     public void setLyricsTrainingSetDirectoryPath(String lyricsTrainingSetDirectoryPath) {
         this.lyricsTrainingSetDirectoryPath = lyricsTrainingSetDirectoryPath;
     }
@@ -141,5 +175,9 @@ public abstract class CommonLyricsPipeline implements LyricsPipeline {
 
     String getLyricsModelDirectoryPath() {
         return lyricsModelDirectoryPath;
+    }
+
+    String getGenreModelDirectoryPath() {
+        return genreModelDirectoryPath;
     }
 }
