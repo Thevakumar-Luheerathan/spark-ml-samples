@@ -134,8 +134,6 @@ public class LogisticRegressionPipeline extends CommonLyricsPipeline {
         Dataset<Row> trainData = splits[0];
         Dataset<Row> testData = splits[1];
 
-        System.out.println("Train size = " + trainData.count() + ", Test size = " + testData.count());
-
         Tokenizer tokenizer = new Tokenizer()
                 .setInputCol("lyrics")
                 .setOutputCol(WORDS.getName());
@@ -164,18 +162,16 @@ public class LogisticRegressionPipeline extends CommonLyricsPipeline {
 
         PipelineModel model = pipeline.fit(trainData);
 
-        Dataset<Row> predictions = model.transform(testData);
+        Dataset<Row> predictions = model.transform(testData).cache();
+        predictions.count();
 
-        MulticlassClassificationEvaluator accuracyEvaluator = new MulticlassClassificationEvaluator()
-                .setMetricName("accuracy");
-        double accuracy = accuracyEvaluator.evaluate(predictions);
+        MulticlassClassificationEvaluator evaluator = new MulticlassClassificationEvaluator();
+        double accuracy = evaluator.setMetricName("accuracy").evaluate(predictions);
+        double f1 = evaluator.setMetricName("f1").evaluate(predictions);
 
-        MulticlassClassificationEvaluator f1Evaluator = new MulticlassClassificationEvaluator()
-                .setMetricName("f1");
-        double f1 = f1Evaluator.evaluate(predictions);
-
-        saveModel(model, getGenreModelDirectory());
-        saveModel(labelIndexerModel, getGenreModelDirectory() + "/label-indexer");
+        String genreModelDir = getGenreModelDirectory();
+        saveModel(model, genreModelDir);
+        saveModel(labelIndexerModel, genreModelDir + "/label-indexer");
 
         Map<String, Object> statistics = new HashMap<>();
         statistics.put("Test accuracy", accuracy);
@@ -201,8 +197,7 @@ public class LogisticRegressionPipeline extends CommonLyricsPipeline {
         String predictedGenre = predictionRow.getAs("predictedGenre");
         DenseVector probability = predictionRow.getAs("probability");
 
-        StringIndexerModel labelIndexerModel = StringIndexerModel.load(getGenreModelDirectory() + "/label-indexer");
-        String[] labels = labelIndexerModel.labels();
+        String[] labels = ((IndexToString) model.stages()[4]).getLabels();
 
         Map<String, Double> probabilities = new HashMap<>();
         for (int i = 0; i < labels.length; i++) {

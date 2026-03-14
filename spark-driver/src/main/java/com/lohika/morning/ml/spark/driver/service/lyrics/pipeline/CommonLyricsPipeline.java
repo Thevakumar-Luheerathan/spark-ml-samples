@@ -128,14 +128,6 @@ public abstract class CommonLyricsPipeline implements LyricsPipeline {
         System.out.println("------------------------------------------------\n");
     }
 
-    void saveModel(CrossValidatorModel model, String modelOutputDirectory) {
-        this.mlService.saveModel(model, modelOutputDirectory);
-    }
-
-    void saveModel(PipelineModel model, String modelOutputDirectory) {
-        this.mlService.saveModel(model, modelOutputDirectory);
-    }
-
     void saveModel(MLWritable model, String modelOutputDirectory) {
         this.mlService.saveModel(model, modelOutputDirectory);
     }
@@ -148,8 +140,8 @@ public abstract class CommonLyricsPipeline implements LyricsPipeline {
                 .csv(genreTrainingSetCsvFilePath);
 
         data = data.select("lyrics", "genre")
-                .filter(data.col("lyrics").isNotNull())
-                .filter(data.col("genre").isNotNull());
+                .filter(functions.col("lyrics").isNotNull())
+                .filter(functions.col("genre").isNotNull());
 
         data = data.coalesce(sparkSession.sparkContext().defaultMinPartitions()).cache();
         long totalSamples = data.count();
